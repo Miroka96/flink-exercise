@@ -20,6 +20,7 @@ package org.myorg.quickstart
 
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.scala._
+import org.apache.flink.util.Collector
 
 import scala.util.Try
 
@@ -37,23 +38,25 @@ object StreamingJob {
 
     val log_pattern = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ?([^\"]+)*\\\" (\\d+) (\\d+|-)$".r
 
-    val parsedData = rawData.map{ s :String =>
-      val log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) = s
-      LogLine(
-        host,
-        day.toInt,
-        month,
-        year.toInt,
-        hour.toInt,
-        minute.toInt,
-        second.toInt,
-        timezone,
-        httpMethod,
-        ressource,
-        httpVersion,
-        httpReplyCode.toInt,
-        Try{replyBytes.toInt}.toOption
-      )
+    val parsedData = rawData.flatMap{ logLine =>
+      val log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) = logLine
+      Try {
+        LogLine(
+          host,
+          day.toInt,
+          month,
+          year.toInt,
+          hour.toInt,
+          minute.toInt,
+          second.toInt,
+          timezone,
+          httpMethod,
+          ressource,
+          httpVersion,
+          httpReplyCode.toInt,
+          Try{replyBytes.toInt}.toOption
+        )
+      }.toOption
     }
 
 
