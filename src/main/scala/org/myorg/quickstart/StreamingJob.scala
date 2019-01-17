@@ -18,19 +18,24 @@
 
 package org.myorg.quickstart
 
+import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.scala._
+
+import scala.util.Try
 
 object StreamingJob {
   def main(args: Array[String]) {
+    // Checking input parameters
+    val params = ParameterTool.fromArgs(args)
+
     // set up the streaming execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
 
-    // Todo read from args
     env.setParallelism(4)
 
     val rawData: DataStream[String] = env.readTextFile("NASA_access_log_Aug95")
 
-    val log_pattern = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ([^\"]+)\\\" (\\d+) (\\d+)$".r
+    val log_pattern = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ?([^\"]+)*\\\" (\\d+) (\\d+|-)$".r
 
     val parsedData = rawData.map{ s :String =>
       val log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) = s
@@ -47,9 +52,10 @@ object StreamingJob {
         ressource,
         httpVersion,
         httpReplyCode.toInt,
-        replyBytes.toInt
+        Try{replyBytes.toInt}.toOption
       )
     }
+
 
     //parsedData.keyBy(_.host)
 
@@ -70,5 +76,5 @@ case class LogLine(
                     ressource: String,
                     httpVersion: String,
                     httpReplyCode: Int,
-                    replyBytes: Int
+                    replyBytes: Option[Int]
                   )
