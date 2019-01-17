@@ -24,7 +24,8 @@ object StreamingJob {
   def main(args: Array[String]) {
     // set up the streaming execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
-
+    // Todo read from args
+    env.setParallelism(4)
     val rawData = env.readTextFile("NASA_access_log_Aug95")
 
 
