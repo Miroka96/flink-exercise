@@ -25,6 +25,9 @@ object StreamingJob {
     // set up the streaming execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
 
+    // Todo read from args
+    env.setParallelism(4)
+
     val rawData: DataStream[String] = env.readTextFile("NASA_access_log_Aug95")
 
     val log_pattern = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ([^\"]+)\\\" (\\d+) (\\d+)$".r
