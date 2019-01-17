@@ -18,6 +18,9 @@
 
 package org.myorg.quickstart
 
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.util.Collector
@@ -32,7 +35,7 @@ object StreamingJob {
     // set up the streaming execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
 
-    env.setParallelism(4)
+    env.setParallelism(2)
 
     val rawData: DataStream[String] = env.readTextFile("NASA_access_log_Aug95")
 
@@ -50,6 +53,8 @@ object StreamingJob {
           minute.toInt,
           second.toInt,
           timezone,
+          LocalDateTime.parse(day+"/"+month+"/"+year+":"+hour+":"+minute+":"+second,
+            DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss")),
           httpMethod,
           ressource,
           httpVersion,
@@ -58,6 +63,18 @@ object StreamingJob {
         )
       }.toOption
     }
+
+    //print number of items
+    /*parsedData.keyBy(_.host).mapWithState((log, count: Option[Int]) =>
+      count match {
+        case Some(c) => ( log, Some(c + 1) )
+        case None => ( log, Some(1) )
+      }).print.setParallelism(1)*/
+
+    // sort by timestamp
+
+    parsedData.keyBy(_.host).map(log => log).print()
+
 
 
     //parsedData.keyBy(_.host)
@@ -75,6 +92,7 @@ case class LogLine(
                     minute: Int,
                     second: Int,
                     timezone: String,
+                    date: LocalDateTime,
                     httpMethod: String,
                     ressource: String,
                     httpVersion: String,
