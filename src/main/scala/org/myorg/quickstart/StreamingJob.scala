@@ -25,10 +25,47 @@ object StreamingJob {
     // set up the streaming execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
 
-    val rawData = env.readTextFile("NASA_access_log_Aug95")
+    val rawData: DataStream[String] = env.readTextFile("NASA_access_log_Aug95")
 
+    val log_pattern = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ([^\"]+)\\\" (\\d+) (\\d+)$".r
+
+    val parsedData = rawData.map{ s :String =>
+      val log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) = s
+      LogLine(
+        host,
+        day.toInt,
+        month,
+        year.toInt,
+        hour.toInt,
+        minute.toInt,
+        second.toInt,
+        timezone,
+        httpMethod,
+        ressource,
+        httpVersion,
+        httpReplyCode.toInt,
+        replyBytes.toInt
+      )
+    }
+
+    //parsedData.keyBy(_.host)
 
     env.execute("NASA Homepage Log Analysis")
   }
 }
 
+case class LogLine(
+                    host: String,
+                    day: Int,
+                    month: String,
+                    year: Int,
+                    hour: Int,
+                    minute: Int,
+                    second: Int,
+                    timezone: String,
+                    httpMethod: String,
+                    ressource: String,
+                    httpVersion: String,
+                    httpReplyCode: Int,
+                    replyBytes: Int
+                  )
