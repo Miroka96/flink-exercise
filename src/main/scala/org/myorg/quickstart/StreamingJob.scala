@@ -20,11 +20,14 @@ package org.myorg.quickstart
 
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.scala._
-import org.apache.flink.util.Collector
 
 import scala.util.Try
+import scala.util.matching.Regex
 
 object StreamingJob {
+  val log_pattern: Regex = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ?([^\"]+)*\\\" (\\d+) (\\d+|-)$".r
+  val filename: String = "NASA_access_log_Aug95"
+
   def main(args: Array[String]) {
     // Checking input parameters
     val params = ParameterTool.fromArgs(args)
@@ -34,35 +37,56 @@ object StreamingJob {
 
     env.setParallelism(4)
 
-    val rawData: DataStream[String] = env.readTextFile("NASA_access_log_Aug95")
+    val rawData: DataStream[String] = env.readTextFile(filename)
 
-    val log_pattern = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ?([^\"]+)*\\\" (\\d+) (\\d+|-)$".r
+    val parsedData = parseLoglines(rawData)
 
-    val parsedData = rawData.flatMap{ logLine =>
-      val log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) = logLine
-      Try {
-        LogLine(
-          host,
-          day.toInt,
-          month,
-          year.toInt,
-          hour.toInt,
-          minute.toInt,
-          second.toInt,
-          timezone,
-          httpMethod,
-          ressource,
-          httpVersion,
-          httpReplyCode.toInt,
-          Try{replyBytes.toInt}.toOption
-        )
-      }.toOption
-    }
-
-
+    /*
+    parsedData.map(_ => (1,1))
+        .keyBy(0)
+        .sum(1)
+        .print()*/
     //parsedData.keyBy(_.host)
 
     env.execute("NASA Homepage Log Analysis")
+  }
+
+  def parseLogline(logLine: String): LogLine = {
+    val log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) = logLine
+
+    LogLine(
+      host,
+      day.toInt,
+      month,
+      year.toInt,
+      hour.toInt,
+      minute.toInt,
+      second.toInt,
+      timezone,
+      httpMethod,
+      ressource,
+      httpVersion,
+      httpReplyCode.toInt,
+      Try {
+        replyBytes.toInt
+      }.toOption
+    )
+  }
+
+  def parseLoglines(rawData: DataStream[String]): DataStream[LogLine] = {
+    rawData.flatMap{ logLine: String =>
+      Try{
+        parseLogline(logLine)
+      }.toOption
+    }
+  }
+
+  def checkInvalidLoglineParsing(rawData: DataStream[String]): Unit = {
+    rawData.filter { logLine =>
+      Try {
+        parseLogline(logLine)
+      }.isFailure
+    }.print()
   }
 }
 
