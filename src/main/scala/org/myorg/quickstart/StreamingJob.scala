@@ -77,26 +77,11 @@ object StreamingJob {
 
     val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
-    countElements(parsedData)
+    //countElements(parsedData)
     //checkInvalidLoglineParsing(rawData)
     //requestCountPerHost(parsedData)
 
-    val uniqueHosts = parsedData.keyBy(x => x.host).filterWithState{
-      (log, seenHostState: Option[Set[String]]) => seenHostState match {
-        case None => (true, Some(Set(log.host)))
-        case Some(seenHosts) => (!seenHosts.contains(log.host), Some(seenHosts + log.host))
-      }
-    }
-
-    val sumUniqueHosts = uniqueHosts.keyBy(x => 0).mapWithState{
-      (host, counterState: Option[Int]) =>
-        counterState match {
-          case None => (1, Some(1))
-          case Some(counter) => (counter + 1, Some(counter + 1))
-        }
-    }.setParallelism(1)
-
-    sumUniqueHosts.print.setParallelism(1)
+    sumUniqueHosts(uniqueHosts(parsedData)).print.setParallelism(1)
 
     env.execute("NASA Homepage Log Analysis")
   }
@@ -140,20 +125,33 @@ object StreamingJob {
 
   def requestCountPerHost(parsedData: DataStream[LogLine]): Unit = {
     val counts = parsedData
-      .keyBy(_.host)
-      .mapWithState((log :LogLine, count: Option[Int]) =>
-      count match {
-        case Some(c) => ( (log.host, c), Some(c + 1) )
-        case None => ( (log.host, 1), Some(1) )
-      })
+      .map((_, 1)).keyBy(_._1.host).sum(1)
 
     counts.print
       .setParallelism(1)
-
   }
 
   def countElements(stream :DataStream[LogLine]): Unit = {
     stream.map((_,1)).keyBy(_._2).sum(1).map(_._2).print.setParallelism(1)
+  }
+
+  def uniqueHosts(parsedData: DataStream[LogLine]): DataStream[LogLine] = {
+    parsedData.keyBy(x => x.host).filterWithState{
+      (log, seenHostState: Option[Set[String]]) => seenHostState match {
+        case None => (true, Some(Set(log.host)))
+        case Some(seenHosts) => (!seenHosts.contains(log.host), Some(seenHosts + log.host))
+      }
+    }
+  }
+
+  def sumUniqueHosts(uniqueHosts: DataStream[LogLine]): DataStream[Int] = {
+    uniqueHosts.keyBy(x => 0).mapWithState{
+      (host, counterState: Option[Int]) =>
+        counterState match {
+          case None => (1, Some(1))
+          case Some(counter) => (counter + 1, Some(counter + 1))
+        }
+    }
   }
 }
 
