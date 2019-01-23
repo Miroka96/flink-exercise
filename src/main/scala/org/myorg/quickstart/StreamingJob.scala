@@ -31,20 +31,21 @@ import scala.util.Try
 import scala.util.matching.Regex
 
 case class LogLine(
-                    host: String,
-                    day: Int,
-                    month: String,
-                    year: Int,
-                    hour: Int,
-                    minute: Int,
-                    second: Int,
-                    timezone: String,
-                    date: Date,
-                    httpMethod: String,
-                    ressource: String,
-                    httpVersion: String,
-                    httpReplyCode: Int,
-                    replyBytes: Option[Int]
+                    raw: String = "",
+                    host: String = "",
+                    day: Int = -1,
+                    month: String = "",
+                    year: Int = -1,
+                    hour: Int = -1,
+                    minute: Int = -1,
+                    second: Int = -1,
+                    timezone: String = "",
+                    date: Date = new Date(),
+                    httpMethod: String = "",
+                    ressource: String = "",
+                    httpVersion: String = "",
+                    httpReplyCode: Int = -1,
+                    replyBytes: Option[Int] = None
                   )
 
 class MinuteAssigner extends AssignerWithPunctuatedWatermarks[LogLine] {
@@ -76,65 +77,60 @@ object StreamingJob {
 
     val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
+    //checkInvalidLoglineParsing(rawData) - None
     requestCountPerHost(parsedData)
 
-    // sort by timestamp
-
-    //parsedData.keyBy(_.host).print()
 
     env.execute("NASA Homepage Log Analysis")
   }
 
   def parseLogline(logLine: String): LogLine = {
-    val log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) = logLine
+    logLine match {
+      case log_pattern(host, day, month, year, hour, minute, second, timezone, httpMethod, ressource, httpVersion, httpReplyCode, replyBytes) =>
+        LogLine(
+          logLine,
+          host,
+          day.toInt,
+          month,
+          year.toInt,
+          hour.toInt,
+          minute.toInt,
+          second.toInt,
+          timezone,
+          new Date(LocalDateTime.parse(day+"/"+month+"/"+year+":"+hour+":"+minute+":"+second,
+            DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss")).toEpochSecond(ZoneOffset.of(timezone))),
+          httpMethod,
+          ressource,
+          httpVersion,
+          httpReplyCode.toInt,
+          Try {
+            replyBytes.toInt
+          }.toOption
+        )
+      case _ => LogLine(raw = logLine)
+    }
 
-    LogLine(
-      host,
-      day.toInt,
-      month,
-      year.toInt,
-      hour.toInt,
-      minute.toInt,
-      second.toInt,
-      timezone,
-      new Date(LocalDateTime.parse(day+"/"+month+"/"+year+":"+hour+":"+minute+":"+second,
-        DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss")).toEpochSecond(ZoneOffset.of(timezone))),
-      httpMethod,
-      ressource,
-      httpVersion,
-      httpReplyCode.toInt,
-      Try {
-        replyBytes.toInt
-      }.toOption
-    )
   }
 
 
   def parseLoglines(rawData: DataStream[String]): DataStream[LogLine] = {
-    rawData.flatMap{ logLine: String =>
-      Try{
-        parseLogline(logLine)
-      }.toOption
-    }
+    rawData.map(parseLogline _).filter(_.host.nonEmpty)
   }
 
   def checkInvalidLoglineParsing(rawData: DataStream[String]): Unit = {
-    rawData.filter { logLine =>
-      Try {
-        parseLogline(logLine)
-      }.isFailure
-    }.print()
+    rawData.map(parseLogline _).filter(_.host.isEmpty).print()
   }
 
   def requestCountPerHost(parsedData: DataStream[LogLine]): Unit = {
-    parsedData
+    val counts = parsedData
       .keyBy(_.host)
       .mapWithState((log :LogLine, count: Option[Int]) =>
       count match {
-        case Some(c) => ( s"${log.host}: ${c}", Some(c + 1) )
-        case None => ( s"${log.host}: 1", Some(1) )
+        case Some(c) => ( (log.host, c), Some(c + 1) )
+        case None => ( (log.host, 1), Some(1) )
       })
-      .print
+
+    counts.print
       .setParallelism(1)
 
   }
