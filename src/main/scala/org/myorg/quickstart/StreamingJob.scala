@@ -61,7 +61,7 @@ class MinuteAssigner extends AssignerWithPunctuatedWatermarks[LogLine] {
 
 
 object StreamingJob {
-  val log_pattern: Regex = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ?([^\"]+)*\\\" (\\d+) (\\d+|-)$".r
+  val log_pattern: Regex = "^(\\S+) - - \\[(\\d\\d)\\/(\\w{1,3})\\/(\\d{4}):(\\d{2}):(\\d{2}):(\\d{2}) (-\\d{4})\\] \\\"(\\w{1,6}) ([^ \"]+) *(HTTP/V?1.0) *\\\" (\\d{3}) (\\d{1,9}|-)$".r
   val filename: String = "NASA_access_log_Aug95"
 
   def main(args: Array[String]) {
@@ -77,10 +77,9 @@ object StreamingJob {
 
     val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
+    countElements(parsedData)
+    //checkInvalidLoglineParsing(rawData)
     //requestCountPerHost(parsedData)
-    //checkInvalidLoglineParsing(rawData) - None
-    //requestCountPerHost(parsedData)
-
 
     val uniqueHosts = parsedData.keyBy(x => x.host).filterWithState{
       (log, seenHostState: Option[Set[String]]) => seenHostState match {
@@ -136,7 +135,7 @@ object StreamingJob {
   }
 
   def checkInvalidLoglineParsing(rawData: DataStream[String]): Unit = {
-    rawData.map(parseLogline _).filter(_.host.isEmpty).print()
+    rawData.map(parseLogline _).filter(_.host.isEmpty).map(_.raw).print()
   }
 
   def requestCountPerHost(parsedData: DataStream[LogLine]): Unit = {
@@ -153,7 +152,9 @@ object StreamingJob {
 
   }
 
-
+  def countElements(stream :DataStream[LogLine]): Unit = {
+    stream.map((_,1)).keyBy(_._2).sum(1).map(_._2).print.setParallelism(1)
+  }
 }
 
 
