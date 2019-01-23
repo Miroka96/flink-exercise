@@ -18,14 +18,46 @@
 
 package org.myorg.quickstart
 
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZoneOffset}
 import java.time.format.DateTimeFormatter
+import java.util.Date
 
 import org.apache.flink.api.java.utils.ParameterTool
+import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.scala._
+import org.apache.flink.streaming.api.watermark.Watermark
 
 import scala.util.Try
 import scala.util.matching.Regex
+
+case class LogLine(
+                    host: String,
+                    day: Int,
+                    month: String,
+                    year: Int,
+                    hour: Int,
+                    minute: Int,
+                    second: Int,
+                    timezone: String,
+                    date: Date,
+                    httpMethod: String,
+                    ressource: String,
+                    httpVersion: String,
+                    httpReplyCode: Int,
+                    replyBytes: Option[Int]
+                  )
+
+class MinuteAssigner extends AssignerWithPunctuatedWatermarks[LogLine] {
+
+  override def extractTimestamp(element: LogLine, previousElementTimestamp: Long): Long = {
+    element.date.getTime
+  }
+
+  override def checkAndGetNextWatermark(lastElement: LogLine, extractedTimestamp: Long): Watermark = {
+    new Watermark(extractedTimestamp / 60)
+  }
+}
+
 
 object StreamingJob {
   val log_pattern: Regex = "^(\\S+) \\S+ \\S+ \\[(\\d+)\\/(\\w+)\\/(\\d+):(\\d+):(\\d+):(\\d+) (-\\d+)\\] \\\"(\\w+) ([^ \"]+) ?([^\"]+)*\\\" (\\d+) (\\d+|-)$".r
@@ -42,18 +74,13 @@ object StreamingJob {
 
     val rawData: DataStream[String] = env.readTextFile(filename)
 
-    val parsedData = parseLoglines(rawData)
+    val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
-    //print number of items
-    /*parsedData.keyBy(_.host).mapWithState((log, count: Option[Int]) =>
-      count match {
-        case Some(c) => ( log, Some(c + 1) )
-        case None => ( log, Some(1) )
-      }).print.setParallelism(1)*/
+    requestCountPerHost(parsedData)
 
     // sort by timestamp
 
-    parsedData.keyBy(_.host).map(log => log).print()
+    //parsedData.keyBy(_.host).print()
 
     env.execute("NASA Homepage Log Analysis")
   }
@@ -70,8 +97,8 @@ object StreamingJob {
       minute.toInt,
       second.toInt,
       timezone,
-      LocalDateTime.parse(day+"/"+month+"/"+year+":"+hour+":"+minute+":"+second,
-        DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss")),
+      new Date(LocalDateTime.parse(day+"/"+month+"/"+year+":"+hour+":"+minute+":"+second,
+        DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss")).toEpochSecond(ZoneOffset.of(timezone))),
       httpMethod,
       ressource,
       httpVersion,
@@ -98,21 +125,14 @@ object StreamingJob {
       }.isFailure
     }.print()
   }
+
+  def requestCountPerHost(parsedData: DataStream[LogLine]): Unit = {
+    parsedData.keyBy(_.host).mapWithState((log, count: Option[Int]) =>
+      count match {
+        case Some(c) => ( log, Some(c + 1) )
+        case None => ( log, Some(1) )
+      }).print.setParallelism(1)
+  }
 }
 
-case class LogLine(
-                    host: String,
-                    day: Int,
-                    month: String,
-                    year: Int,
-                    hour: Int,
-                    minute: Int,
-                    second: Int,
-                    timezone: String,
-                    date: LocalDateTime,
-                    httpMethod: String,
-                    ressource: String,
-                    httpVersion: String,
-                    httpReplyCode: Int,
-                    replyBytes: Option[Int]
-                  )
+
