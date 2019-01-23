@@ -89,7 +89,7 @@ object StreamingJob {
       }
     }
 
-    val numberUniqueWords = uniqueHosts.keyBy(x => 0).mapWithState{
+    val sumUniqueHosts = uniqueHosts.keyBy(x => 0).mapWithState{
       (host, counterState: Option[Int]) =>
         counterState match {
           case None => (1, Some(1))
@@ -97,7 +97,7 @@ object StreamingJob {
         }
     }.setParallelism(1)
 
-    numberUniqueWords.print.setParallelism(1)
+    sumUniqueHosts.print.setParallelism(1)
 
     env.execute("NASA Homepage Log Analysis")
   }
