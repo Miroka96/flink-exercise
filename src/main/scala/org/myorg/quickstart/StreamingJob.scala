@@ -20,12 +20,19 @@ package org.myorg.quickstart
 
 import java.time.{LocalDateTime, ZoneOffset}
 import java.time.format.DateTimeFormatter
+import java.util
 import java.util.Date
 
+import org.apache.flink.api.common.ExecutionConfig
+import org.apache.flink.api.common.typeutils.TypeSerializer
 import org.apache.flink.api.java.utils.ParameterTool
+import org.apache.flink.streaming.api.{TimeCharacteristic, environment}
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.watermark.Watermark
+import org.apache.flink.streaming.api.windowing.assigners.{TumblingEventTimeWindows, WindowAssigner}
+import org.apache.flink.streaming.api.windowing.time.Time
+import org.apache.flink.streaming.api.windowing.triggers.Trigger
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -70,18 +77,21 @@ object StreamingJob {
 
     // set up the streaming execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
-
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(2)
 
     val rawData: DataStream[String] = env.readTextFile(filename)
 
+    //val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
     val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
     //countElements(parsedData)
     //checkInvalidLoglineParsing(rawData)
     //requestCountPerHost(parsedData)
 
-    sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
+    val ding = sumUniqueHostsStream(uniqueHostsStream(parsedData)).timeWindowAll(Time.days(31))
+    val aSum = ding.max(0)
+    aSum.print()
 
     env.execute("NASA Homepage Log Analysis")
   }
