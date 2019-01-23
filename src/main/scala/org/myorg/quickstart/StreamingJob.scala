@@ -127,11 +127,16 @@ object StreamingJob {
   }
 
   def requestCountPerHost(parsedData: DataStream[LogLine]): Unit = {
-    parsedData.keyBy(_.host).mapWithState((log, count: Option[Int]) =>
+    parsedData
+      .keyBy(_.host)
+      .mapWithState((log :LogLine, count: Option[Int]) =>
       count match {
-        case Some(c) => ( log, Some(c + 1) )
-        case None => ( log, Some(1) )
-      }).print.setParallelism(1)
+        case Some(c) => ( s"${log.host}: ${c}", Some(c + 1) )
+        case None => ( s"${log.host}: 1", Some(1) )
+      })
+      .print
+      .setParallelism(1)
+
   }
 }
 
