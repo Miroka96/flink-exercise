@@ -91,9 +91,9 @@ object StreamingJob {
     //sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
     hostWithMostRequests(parsedData)
 
-    val ding = sumUniqueHostsStream(uniqueHostsStream(parsedData)).timeWindowAll(Time.days(31))
-    val aSum = ding.max(0)
-    aSum.print()
+    val uniqeHostCountStream = sumUniqueHostsStream(uniqueHostsStream(parsedData))
+    val uniqueHostCountOverOneMonth = uniqeHostCountStream.timeWindowAll(Time.days(31)).max(0)
+    uniqueHostCountOverOneMonth.print()
 
     //println(env.execute("NASA Homepage Log Analysis").getAllAccumulatorResults)
     env.execute("NASA Homepage Log Analysis")
