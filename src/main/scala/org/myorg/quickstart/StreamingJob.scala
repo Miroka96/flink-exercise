@@ -84,13 +84,13 @@ object StreamingJob {
     //checkInvalidLoglineParsing(rawData).print
     //requestCountPerHost(parsedData).print
     //sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
-    hostWithMostRequests(parsedData)
+    hostWithMostRequests(parsedData).print
 
-    val uniqeHostCountStream = sumUniqueHostsStream(uniqueHostsStream(parsedData))
-    val uniqueHostCountOverOneMonth = uniqeHostCountStream.timeWindowAll(Time.days(31)).max(0)
-    uniqueHostCountOverOneMonth.print()
+    //val uniqeHostCountStream = sumUniqueHostsStream(uniqueHostsStream(parsedData))
+    //val uniqueHostCountOverOneMonth = uniqeHostCountStream.timeWindowAll(Time.days(31)).max(0)
+    //uniqueHostCountOverOneMonth.print()
 
-    requestCountPerHost(parsedData).windowAll(TumblingEventTimeWindows.of(Time.days(100000))).reduce((x,y) => if (x._2 > y._2) x else y).setParallelism(1).print()
+    //requestCountPerHost(parsedData).windowAll(TumblingEventTimeWindows.of(Time.days(100000))).reduce((x,y) => if (x._2 > y._2) x else y).setParallelism(1).print()
     //requestCountPerHost(parsedData).print()
     env.execute("NASA Homepage Log Analysis")
   }
@@ -155,8 +155,7 @@ object StreamingJob {
   }
 
   def hostWithMostRequests(parsedData: DataStream[LogLine]): DataStream[(String, Int)] = {
-    // Faulty
-    parsedData.map(e => (e.host, 1)).keyBy(_._1).sum(1).keyBy(_ => 0).max(1)
+    requestCountPerHost(parsedData).keyBy(_ => 0).maxBy(1).map(x => (x._1.host, x._2))//.reduce((x,y) => if (x._2 > y._2) x else y).map(x => (x._1.host, x._2))
   }
 }
 
