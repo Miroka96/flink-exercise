@@ -77,9 +77,27 @@ object StreamingJob {
 
     val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
+    //requestCountPerHost(parsedData)
     //checkInvalidLoglineParsing(rawData) - None
-    requestCountPerHost(parsedData)
+    //requestCountPerHost(parsedData)
 
+
+    val uniqueHosts = parsedData.keyBy(x => x.host).filterWithState{
+      (log, seenHostState: Option[Set[String]]) => seenHostState match {
+        case None => (true, Some(Set(log.host)))
+        case Some(seenHosts) => (!seenHosts.contains(log.host), Some(seenHosts + log.host))
+      }
+    }
+
+    val numberUniqueWords = uniqueHosts.keyBy(x => 0).mapWithState{
+      (host, counterState: Option[Int]) =>
+        counterState match {
+          case None => (1, Some(1))
+          case Some(counter) => (counter + 1, Some(counter + 1))
+        }
+    }.setParallelism(1)
+
+    numberUniqueWords.print.setParallelism(1)
 
     env.execute("NASA Homepage Log Analysis")
   }
@@ -134,6 +152,8 @@ object StreamingJob {
       .setParallelism(1)
 
   }
+
+
 }
 
 
