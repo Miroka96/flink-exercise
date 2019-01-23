@@ -77,14 +77,14 @@ object StreamingJob {
 
     val parsedData: DataStream[LogLine] = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
-    //countElements(parsedData)
-    //checkInvalidLoglineParsing(rawData)
-    //requestCountPerHost(parsedData)
+    //countElements(parsedData).print
+    //checkInvalidLoglineParsing(rawData).print
+    //requestCountPerHost(parsedData).print
     //sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
-    //hostWithMostRequests(parsedData)
+    hostWithMostRequests(parsedData)
 
 
-    env.execute("NASA Homepage Log Analysis")
+    println(env.execute("NASA Homepage Log Analysis").getAllAccumulatorResults)
   }
 
   def parseLogline(logLine: String): LogLine = {
@@ -120,20 +120,16 @@ object StreamingJob {
     rawData.map(parseLogline _).filter(_.host.nonEmpty)
   }
 
-  def checkInvalidLoglineParsing(rawData: DataStream[String]): Unit = {
-    rawData.map(parseLogline _).filter(_.host.isEmpty).map(_.raw).print()
+  def checkInvalidLoglineParsing(rawData: DataStream[String]): DataStream[String] = {
+    rawData.map(parseLogline _).filter(_.host.isEmpty).map(_.raw)
   }
 
-  def requestCountPerHost(parsedData: DataStream[LogLine]): Unit = {
-    val counts = parsedData
-      .map((_, 1)).keyBy(_._1.host).sum(1)
-
-    counts.print
-      .setParallelism(1)
+  def requestCountPerHost(parsedData: DataStream[LogLine]): DataStream[(LogLine, Int)] = {
+    parsedData.map((_, 1)).keyBy(_._1.host).sum(1)
   }
 
-  def countElements(stream :DataStream[LogLine]): Unit = {
-    stream.map((_,1)).keyBy(_._2).sum(1).map(_._2).print.setParallelism(1)
+  def countElements(stream :DataStream[LogLine]): DataStream[Int] = {
+    stream.map((_,1)).keyBy(_._2).sum(1).map(_._2)
   }
 
   def uniqueHostsStream(parsedData: DataStream[LogLine]): DataStream[LogLine] = {
@@ -149,8 +145,8 @@ object StreamingJob {
     uniqueHostsStream.map(_ => 1).keyBy(_ => 0).sum(0)
   }
 
-  def hostWithMostRequests(parsedData: DataStream[LogLine]): Unit = {
-    parsedData.map(e => (e.host, 1)).keyBy(0).sum(1).keyBy(_ => 0).max(1).print
+  def hostWithMostRequests(parsedData: DataStream[LogLine]): DataStream[(String, Int)] = {
+    parsedData.map(e => (e.host, 1)).keyBy(0).sum(1).keyBy(_ => 0).max(1)
   }
 }
 
