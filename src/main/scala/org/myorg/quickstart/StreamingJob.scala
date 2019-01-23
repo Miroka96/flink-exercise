@@ -81,7 +81,7 @@ object StreamingJob {
     //checkInvalidLoglineParsing(rawData)
     //requestCountPerHost(parsedData)
 
-    sumUniqueHosts(uniqueHosts(parsedData)).print.setParallelism(1)
+    sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
 
     env.execute("NASA Homepage Log Analysis")
   }
@@ -135,7 +135,7 @@ object StreamingJob {
     stream.map((_,1)).keyBy(_._2).sum(1).map(_._2).print.setParallelism(1)
   }
 
-  def uniqueHosts(parsedData: DataStream[LogLine]): DataStream[LogLine] = {
+  def uniqueHostsStream(parsedData: DataStream[LogLine]): DataStream[LogLine] = {
     parsedData.keyBy(x => x.host).filterWithState{
       (log, seenHostState: Option[Set[String]]) => seenHostState match {
         case None => (true, Some(Set(log.host)))
@@ -144,14 +144,8 @@ object StreamingJob {
     }
   }
 
-  def sumUniqueHosts(uniqueHosts: DataStream[LogLine]): DataStream[Int] = {
-    uniqueHosts.keyBy(x => 0).mapWithState{
-      (host, counterState: Option[Int]) =>
-        counterState match {
-          case None => (1, Some(1))
-          case Some(counter) => (counter + 1, Some(counter + 1))
-        }
-    }
+  def sumUniqueHostsStream(uniqueHostsStream: DataStream[LogLine]): DataStream[Int] = {
+    uniqueHostsStream.map(line => 1).keyBy(x=>0).sum(0)
   }
 }
 
