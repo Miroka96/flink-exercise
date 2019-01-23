@@ -75,13 +75,14 @@ object StreamingJob {
 
     val rawData: DataStream[String] = env.readTextFile(filename)
 
-    val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
+    val parsedData: DataStream[LogLine] = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
     //countElements(parsedData)
     //checkInvalidLoglineParsing(rawData)
     //requestCountPerHost(parsedData)
+    //sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
+    //hostWithMostRequests(parsedData)
 
-    sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
 
     env.execute("NASA Homepage Log Analysis")
   }
@@ -145,7 +146,11 @@ object StreamingJob {
   }
 
   def sumUniqueHostsStream(uniqueHostsStream: DataStream[LogLine]): DataStream[Int] = {
-    uniqueHostsStream.map(line => 1).keyBy(x=>0).sum(0)
+    uniqueHostsStream.map(_ => 1).keyBy(_ => 0).sum(0)
+  }
+
+  def hostWithMostRequests(parsedData: DataStream[LogLine]): Unit = {
+    parsedData.map(e => (e.host, 1)).keyBy(0).sum(1).keyBy(_ => 0).max(1).print
   }
 }
 
