@@ -18,21 +18,17 @@
 
 package org.myorg.quickstart
 
-import java.time.{LocalDateTime, ZoneOffset}
 import java.time.format.DateTimeFormatter
-import java.util
+import java.time.{LocalDateTime, ZoneOffset}
 import java.util.Date
 
-import org.apache.flink.api.common.ExecutionConfig
-import org.apache.flink.api.common.typeutils.TypeSerializer
 import org.apache.flink.api.java.utils.ParameterTool
-import org.apache.flink.streaming.api.{TimeCharacteristic, environment}
+import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.watermark.Watermark
-import org.apache.flink.streaming.api.windowing.assigners.{TumblingEventTimeWindows, WindowAssigner}
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
-import org.apache.flink.streaming.api.windowing.triggers.Trigger
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -82,8 +78,7 @@ object StreamingJob {
 
     val rawData: DataStream[String] = env.readTextFile(filename)
 
-    //val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
-    val parsedData = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
+    val parsedData: DataStream[LogLine] = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
 
     //countElements(parsedData).print
     //checkInvalidLoglineParsing(rawData).print
@@ -95,7 +90,8 @@ object StreamingJob {
     val uniqueHostCountOverOneMonth = uniqeHostCountStream.timeWindowAll(Time.days(31)).max(0)
     uniqueHostCountOverOneMonth.print()
 
-    //println(env.execute("NASA Homepage Log Analysis").getAllAccumulatorResults)
+    requestCountPerHost(parsedData).windowAll(TumblingEventTimeWindows.of(Time.days(100000))).reduce((x,y) => if (x._2 > y._2) x else y).setParallelism(1).print()
+    //requestCountPerHost(parsedData).print()
     env.execute("NASA Homepage Log Analysis")
   }
 
@@ -112,7 +108,7 @@ object StreamingJob {
           minute.toInt,
           second.toInt,
           timezone,
-          new Date(LocalDateTime.parse(day+"/"+month+"/"+year+":"+hour+":"+minute+":"+second,
+          new Date(LocalDateTime.parse(day + "/" + month + "/" + year + ":" + hour + ":" + minute + ":" + second,
             DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss")).toEpochSecond(ZoneOffset.of(timezone))),
           httpMethod,
           ressource,
@@ -140,16 +136,17 @@ object StreamingJob {
     parsedData.map((_, 1)).keyBy(_._1.host).sum(1)
   }
 
-  def countElements(stream :DataStream[LogLine]): DataStream[Int] = {
-    stream.map((_,1)).keyBy(_._2).sum(1).map(_._2)
+  def countElements(stream: DataStream[LogLine]): DataStream[Int] = {
+    stream.map((_, 1)).keyBy(_._2).sum(1).map(_._2)
   }
 
   def uniqueHostsStream(parsedData: DataStream[LogLine]): DataStream[LogLine] = {
-    parsedData.keyBy(x => x.host).filterWithState{
-      (log, seenHostState: Option[Set[String]]) => seenHostState match {
-        case None => (true, Some(Set(log.host)))
-        case Some(seenHosts) => (!seenHosts.contains(log.host), Some(seenHosts + log.host))
-      }
+    parsedData.keyBy(x => x.host).filterWithState {
+      (log, seenHostState: Option[Set[String]]) =>
+        seenHostState match {
+          case None => (true, Some(Set(log.host)))
+          case Some(seenHosts) => (!seenHosts.contains(log.host), Some(seenHosts + log.host))
+        }
     }
   }
 
@@ -158,7 +155,8 @@ object StreamingJob {
   }
 
   def hostWithMostRequests(parsedData: DataStream[LogLine]): DataStream[(String, Int)] = {
-    parsedData.map(e => (e.host, 1)).keyBy(0).sum(1).keyBy(_ => 0).max(1)
+    // Faulty
+    parsedData.map(e => (e.host, 1)).keyBy(_._1).sum(1).keyBy(_ => 0).max(1)
   }
 }
 
