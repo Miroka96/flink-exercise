@@ -79,19 +79,15 @@ object StreamingJob {
     val rawData: DataStream[String] = env.readTextFile(filename)
 
     val parsedData: DataStream[LogLine] = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
+    checkInvalidLoglineParsing(rawData).print
 
-    //countElements(parsedData).print
-    //checkInvalidLoglineParsing(rawData).print
-    //requestCountPerHost(parsedData).print
-    //sumUniqueHostsStream(uniqueHostsStream(parsedData)).print.setParallelism(1)
-    hostWithMostRequests(parsedData).print
 
-    //val uniqeHostCountStream = sumUniqueHostsStream(uniqueHostsStream(parsedData))
-    //val uniqueHostCountOverOneMonth = uniqeHostCountStream.timeWindowAll(Time.days(31)).max(0)
-    //uniqueHostCountOverOneMonth.print()
+    hostWithMostRequests(parsedData).timeWindowAll(Time.days(31)).maxBy(1).print("Client with most requests ").setParallelism(1)
 
-    //requestCountPerHost(parsedData).windowAll(TumblingEventTimeWindows.of(Time.days(100000))).reduce((x,y) => if (x._2 > y._2) x else y).setParallelism(1).print()
-    //requestCountPerHost(parsedData).print()
+    val uniqueHostCountStream = sumUniqueHostsStream(uniqueHostsStream(parsedData))
+    val uniqueHostCountOverOneMonth = uniqueHostCountStream.timeWindowAll(Time.days(31)).max(0)
+    uniqueHostCountOverOneMonth.print("Number of unique clients ").setParallelism(1)
+
     env.execute("NASA Homepage Log Analysis")
   }
 
@@ -132,8 +128,8 @@ object StreamingJob {
     rawData.map(parseLogline _).filter(_.host.isEmpty).map(_.raw)
   }
 
-  def requestCountPerHost(parsedData: DataStream[LogLine]): DataStream[(LogLine, Int)] = {
-    parsedData.map((_, 1)).keyBy(_._1.host).sum(1)
+  def requestCountPerHost(parsedData: DataStream[LogLine]): DataStream[(String, Int)] = {
+    parsedData.map(x => (x.host, 1)).keyBy(0).sum(1)
   }
 
   def countElements(stream: DataStream[LogLine]): DataStream[Int] = {
@@ -155,7 +151,7 @@ object StreamingJob {
   }
 
   def hostWithMostRequests(parsedData: DataStream[LogLine]): DataStream[(String, Int)] = {
-    requestCountPerHost(parsedData).keyBy(_ => 0).maxBy(1).map(x => (x._1.host, x._2))//.reduce((x,y) => if (x._2 > y._2) x else y).map(x => (x._1.host, x._2))
+    requestCountPerHost(parsedData).keyBy(_ => 0).maxBy(1)
   }
 }
 
