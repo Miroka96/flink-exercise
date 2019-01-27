@@ -22,13 +22,14 @@ import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneOffset}
 import java.util.Date
 
+import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.watermark.Watermark
-import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
+import org.apache.flink.util.Collector
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -51,42 +52,61 @@ case class LogLine(
                     replyBytes: Option[Int] = None
                   )
 
-class MinuteAssigner extends AssignerWithPunctuatedWatermarks[LogLine] {
+
+class PunctuatedAssigner extends AssignerWithPunctuatedWatermarks[LogLine] {
 
   override def extractTimestamp(element: LogLine, previousElementTimestamp: Long): Long = {
     element.date.getTime
   }
 
   override def checkAndGetNextWatermark(lastElement: LogLine, extractedTimestamp: Long): Watermark = {
-    new Watermark(extractedTimestamp / 60)
+     new Watermark(extractedTimestamp)
   }
 }
 
 
 object StreamingJob {
   val log_pattern: Regex = "^(\\S+) - - \\[(\\d\\d)\\/(\\w{1,3})\\/(\\d{4}):(\\d{2}):(\\d{2}):(\\d{2}) (-\\d{4})\\] \\\"(\\w{1,6}) ([^ \"]+) *(HTTP/V?1.0) *\\\" (\\d{3}) (\\d{1,9}|-)$".r
-  val filename: String = "NASA_access_log_Aug95"
 
   def main(args: Array[String]) {
     // Checking input parameters
     val params = ParameterTool.fromArgs(args)
+    val parallelism = params.getInt("cores", 4)
+    val file_path = params.get("path", "NASA_access_log_Aug95")
 
+    println(file_path)
     // set up the streaming execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+
+    //env.getConfig.setAutoWatermarkInterval(1L)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
-    env.setParallelism(2)
+    env.setParallelism(parallelism)
 
-    val rawData: DataStream[String] = env.readTextFile(filename)
+    val rawData: DataStream[String] = env.readTextFile(file_path)
 
-    val parsedData: DataStream[LogLine] = parseLoglines(rawData).assignTimestampsAndWatermarks(new MinuteAssigner)
-    checkInvalidLoglineParsing(rawData).print
+    val parsedData= parseLoglines(rawData).assignTimestampsAndWatermarks(new PunctuatedAssigner).setParallelism(1)
+    //checkInvalidLoglineParsing(rawData).print
 
-
-    hostWithMostRequests(parsedData).timeWindowAll(Time.days(31)).maxBy(1).print("Client with most requests ").setParallelism(1)
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
+    hostWithMostRequests(parsedData).timeWindowAll(Time.days(1)).maxBy(1)
+      .print("Client with most requests ").setParallelism(1)
 
     val uniqueHostCountStream = sumUniqueHostsStream(uniqueHostsStream(parsedData))
     val uniqueHostCountOverOneMonth = uniqueHostCountStream.timeWindowAll(Time.days(31)).max(0)
     uniqueHostCountOverOneMonth.print("Number of unique clients ").setParallelism(1)
+    val averageBytesDeliverd = parsedData.map(_.replyBytes.getOrElse(0))
+      .timeWindowAll(Time.days(31)).apply((w,v,out : Collector[Long]) => {
+      //val bytes : Iterable[Int] = v
+      var sum_b = 0L
+      var size = 0L
+      for(byte <- v) {
+        sum_b += byte
+        size += 1
+      }
+      //val avg:Double =  bytes.sum / bytes.size
+      println(sum_b, size)
+      out.collect(sum_b/size)
+    }).print("Average Response size ").setParallelism(1)
 
     env.execute("NASA Homepage Log Analysis")
   }
