@@ -88,7 +88,7 @@ object StreamingJob {
     //checkInvalidLoglineParsing(rawData).print
 
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
-    hostWithMostRequests(parsedData).timeWindowAll(Time.days(1)).maxBy(1)
+    hostWithMostRequests(parsedData).timeWindowAll(Time.days(31)).maxBy(1)
       .print("Client with most requests ").setParallelism(1)
 
     val uniqueHostCountStream = sumUniqueHostsStream(uniqueHostsStream(parsedData))
@@ -103,8 +103,6 @@ object StreamingJob {
         sum_b += byte
         size += 1
       }
-      //val avg:Double =  bytes.sum / bytes.size
-      println(sum_b, size)
       out.collect(sum_b/size)
     }).print("Average Response size ").setParallelism(1)
 
@@ -171,7 +169,7 @@ object StreamingJob {
   }
 
   def hostWithMostRequests(parsedData: DataStream[LogLine]): DataStream[(String, Int)] = {
-    requestCountPerHost(parsedData).keyBy(_ => 0).maxBy(1)
+    requestCountPerHost(parsedData)
   }
 }
 
